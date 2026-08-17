@@ -49,6 +49,24 @@ If needed, add it to the bar explicitly:
 omarchy bar plugin add kuki --section right
 ```
 
+## Remove
+
+```sh
+omarchy plugin remove kuki
+```
+
+Or just disable it, keeping it installed:
+
+```sh
+omarchy plugin disable kuki
+```
+
+To also clear its saved state and cache:
+
+```sh
+rm -rf ~/.config/omarchy/kuki
+```
+
 ## Usage
 
 Click the wind icon to open the panel. Pick a **category** chip, then a **layer**
