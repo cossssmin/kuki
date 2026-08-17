@@ -13,28 +13,28 @@ aerosols, UV, and fire.
 
 ## Features
 
-- **Five curated categories** — **Air quality** (PM2.5, PM10, O₃, NO₂, SO₂, CO),
+- **Five curated categories** - **Air quality** (PM2.5, PM10, O₃, NO₂, SO₂, CO),
   **Allergens** (birch, grass, ragweed, olive, alder, mugwort), **Aerosols** (total AOD,
   dust, wildfire smoke, sea salt, sulphate), **UV index**, and **Fire**. A Custom tab
   searches any of the ~95 public CAMS layers, including the technical ones.
-- **Interactive map** — theme-aware light/dark basemap, drag to
+- **Interactive map** - theme-aware light/dark basemap, drag to
   pan, wheel to zoom.
-- **Forecast time** — a scrubber with prev/next and a play button that
+- **Forecast time** - a scrubber with prev/next and a play button that
   auto-advances (paced to the network so frames never lag). Opens on the step
   nearest the current time.
-- **Minimal legend** — a discrete swatch strip below the map with
+- **Minimal legend** - a discrete swatch strip below the map with
   category-appropriate ends ("Cleaner → More polluted", "Less pollen → More
   pollen", …).
-- **Allergen index or concentration** — toggle each pollen species between the
+- **Allergen index or concentration** - toggle each pollen species between the
   banded EEA index and raw grains/m³.
-- **Per-category layer checklist** — tick which layers appear in a category's
+- **Per-category layer checklist** - tick which layers appear in a category's
   picker; remembered per category.
-- **Settings** (⚙) — overlay opacity, per-layer style, and the layer checklist.
-- **Opens on your country** — the first-run map centre comes from your system
+- **Settings** (⚙) - overlay opacity, per-layer style, and the layer checklist.
+- **Opens on your country** - the first-run map centre comes from your system
   timezone (fully offline, no IP geolocation).
-- **Bar tooltip** — hover the icon to see the current value and level at your
+- **Bar tooltip** - hover the icon to see the current value and level at your
   home location (e.g. "PM2.5 6.4 µg/m³ · Low").
-- **Remembers everything** — last layer per category, view, time, opacity, and
+- **Remembers everything** - last layer per category, view, time, opacity, and
   the layer checklist all persist across restarts.
 
 ## Install
@@ -87,12 +87,25 @@ the arrows or hit play. Open **⚙** for opacity, style, and the layer checklist
 ## Requirements
 
 - Omarchy 4 "Quattro" shell (Quickshell).
-- `python3` (standard library only — the helper fetches and parses the CAMS
+- `python3` (standard library only; the helper fetches and parses the CAMS
   capabilities, legends, and point values).
 - Network access for the basemap tiles and the CAMS WMS. Capabilities are cached
   locally and refreshed at most every 6 hours.
 
 No QtLocation is required; the map is hand-rolled.
+
+## Dependencies
+
+- **No third-party packages.** Nothing to `npm` or `pip` install. The QML runs on
+  the Omarchy/Quickshell runtime; the Python helper uses only the standard library.
+- **External services** (network): the CAMS WMS at `eccharts.ecmwf.int` and the
+  CARTO basemap tiles at `basemaps.cartocdn.com`.
+
+## Configuration
+
+Kūki reads and writes only its own files under `~/.config/omarchy/kuki/`
+(`state.json`, `caps.json`). It never modifies your Hyprland, shell, or any other
+configuration. Bar placement is handled by the `omarchy` CLI when you enable it.
 
 ## Data & attribution
 
@@ -100,8 +113,6 @@ No QtLocation is required; the map is hand-rolled.
   public ECMWF WMS (`eccharts.ecmwf.int/wms?token=public`).
 - Basemap: **© OpenStreetMap contributors, © CARTO**.
 
-State and the capabilities cache live in `~/.config/omarchy/kuki/`.
-
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
