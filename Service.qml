@@ -17,30 +17,6 @@ Item {
   signal panelToggleRequested()
   signal panelOpenRequested()
   signal panelCloseRequested()
-  signal uvValueReady(real value)
-
-  // One-shot value probe at the current view centre (used by the UV easter egg).
-  // Uses the helper because QML's XMLHttpRequest is unavailable under Quickshell.
-  function probeUv() {
-    if (probeProcess.running || !root.state.center) return
-    probeProcess.command = ["python3", root.helperPath, "probe",
-      "--layer", root.state.layer, "--style", root.state.style || "",
-      "--lat", String(root.state.center.lat), "--lon", String(root.state.center.lon),
-      "--time", root.validTime]
-    probeProcess.running = true
-  }
-
-  Process {
-    id: probeProcess
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = {}
-        try { parsed = JSON.parse(text || "{}") } catch (e) { parsed = {} }
-        if (parsed.value !== null && isFinite(parsed.value)) root.uvValueReady(Number(parsed.value))
-      }
-    }
-  }
 
   property bool playing: false
 

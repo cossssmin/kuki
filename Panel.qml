@@ -28,7 +28,6 @@ Panel {
   readonly property bool refreshing: svc ? svc.refreshing : false
   readonly property var center: (svc && svc.state && svc.state.center) ? svc.state.center : ({ lat: 40, lon: 10 })
   property bool settingsOpen: false
-  property bool memeOnCooldown: false  // gate the UV meme so it doesn't re-spam
 
   function open() { root.controller.show() }
   function close() { root.controller.hide() }
@@ -58,30 +57,11 @@ Panel {
     target: map
     function onOverlayFrameReady() {
       if (root.svc && root.svc.playing) playDwell.restart()
-      // Re-check the UV value each time the UV overlay settles (a new view or
-      // time step), unless playing or still on cooldown from the last meme.
-      if (root.svc && root.svc.currentCategory === "uv"
-          && !root.svc.playing && !root.memeOnCooldown) {
-        root.svc.probeUv()
-      }
-    }
-  }
-
-  Connections {
-    target: root.svc
-    function onUvValueReady(value) {
-      if (isFinite(value) && value >= 6) {  // WHO "High"+
-        uvMemeDelay.restart()
-        root.memeOnCooldown = true
-        memeCooldown.restart()
-      }
     }
   }
 
   Timer { id: playDwell; interval: 550; onTriggered: root.playAdvance() }
   Timer { id: playSafety; interval: 4000; onTriggered: root.playAdvance() }
-  Timer { id: uvMemeDelay; interval: 1000; onTriggered: uvMemeAnim.restart() }
-  Timer { id: memeCooldown; interval: 300000; onTriggered: root.memeOnCooldown = false }
 
   KeyboardPanel {
     id: panel
@@ -418,24 +398,6 @@ Panel {
               overlayOpacity: root.svc ? root.svc.state.overlayOpacity : 0.75
               onViewChanged: function(lat, lon, zoom) {
                 if (root.svc) root.svc.setView(lat, lon, zoom)
-              }
-            }
-
-            // Easter egg: when UV is dangerous (WHO "High", index ≥ 6), the
-            // "this is fine" dog flashes over the whole map a beat after it loads.
-            Image {
-              id: uvMeme
-              anchors.fill: parent
-              fillMode: Image.PreserveAspectCrop
-              source: Qt.resolvedUrl("assets/this-is-fine.jpg")
-              opacity: 0
-              visible: opacity > 0
-
-              SequentialAnimation {
-                id: uvMemeAnim
-                NumberAnimation { target: uvMeme; property: "opacity"; from: 0; to: 0.4; duration: 450; easing.type: Easing.OutCubic }
-                PauseAnimation { duration: 1500 }
-                NumberAnimation { target: uvMeme; property: "opacity"; to: 0; duration: 650; easing.type: Easing.InCubic }
               }
             }
           }
