@@ -1,6 +1,6 @@
 # Kūki
 
-Air quality, pollen, aerosol, UV, and fire forecast maps on the Omarchy Quattro bar, from Copernicus CAMS.
+Air quality, pollen, aerosol, and UV forecast maps on the Omarchy Quattro bar, from Copernicus CAMS.
 
 *Kūki* (空気) is Japanese for "air."
 
@@ -9,14 +9,19 @@ Air quality, pollen, aerosol, UV, and fire forecast maps on the Omarchy Quattro 
 Click the wind icon in the bar to open an interactive slippy map of Copernicus
 Atmosphere Monitoring Service (CAMS) forecast layers. Pan and zoom, step through
 the forecast hour by hour or play it, and switch between air quality, allergens,
-aerosols, UV, and fire.
+aerosols, and UV.
 
 ## Features
 
-- **Five curated categories** - **Air quality** (PM2.5, PM10, O₃, NO₂, SO₂, CO),
+- **Four curated categories** - **Air quality** (PM2.5, PM10, O₃, NO₂, SO₂, CO),
   **Allergens** (birch, grass, ragweed, olive, alder, mugwort), **Aerosols** (total AOD,
-  dust, wildfire smoke, sea salt, sulphate), **UV index**, and **Fire**. A Custom tab
-  searches any of the ~95 public CAMS layers, including the technical ones.
+  dust, wildfire smoke, sea salt, sulphate), and **UV**. An **Other** tab searches
+  any of the ~95 public CAMS layers, including the technical ones (fire radiative
+  power, upper-air and greenhouse gases, …).
+- **Works worldwide** - inside Europe the map uses CAMS's high-resolution regional
+  forecast; everywhere else it falls back to the coarser global CAMS model
+  automatically (picked from your system timezone, no location picker). Allergens
+  is Europe-only pollen, so its tab is disabled outside Europe.
 - **Interactive map** - theme-aware light/dark basemap, drag to
   pan, wheel to zoom.
 - **Forecast time** - a scrubber with prev/next and a play button that

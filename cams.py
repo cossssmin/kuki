@@ -29,8 +29,15 @@ GET_CAPABILITIES = (
     WMS_BASE + "&service=WMS&version=1.3.0&request=GetCapabilities"
 )
 CACHE_MAX_AGE = 6 * 60 * 60  # seconds; refresh capabilities if older than this
-DEFAULT_LAYER = "composition_europe_pm2p5_forecast_surface"  # first-run: Air Quality / PM2.5
+DEFAULT_LAYER = "composition_europe_pm2p5_forecast_surface"  # Europe first-run: Air Quality / PM2.5
+DEFAULT_LAYER_GLOBAL = "composition_pm2p5"  # outside Europe: coarser global PM2.5
 DEFAULT_STYLE = ""  # empty = the layer's own WMS default, always valid
+
+# CAMS runs a high-res regional ensemble over Europe (composition_europe_*) and a
+# coarser global model everywhere (composition_*). Inside this box we curate the
+# Europe layers and the Europe-only pollen (Allergens); outside it the Air quality
+# tab falls back to the global layers and Allergens is disabled.
+EUROPE_BBOX = {"lat_min": 30.0, "lat_max": 72.0, "lon_min": -25.0, "lon_max": 45.0}
 
 
 def base_dir() -> Path:
@@ -92,6 +99,13 @@ UV = {
     "uvindex": "UV now", "uvindex_daily_max": "UV daily max",
     "uvindex_clearsky": "UV clear-sky", "uvindex_clearsky_daily_max": "UV clear-sky max",
 }
+# Global surface air-quality layers, used outside Europe. Species keys match the
+# Europe layers' so the per-category checklist carries across regions.
+GLOBAL_AIR_QUALITY = {
+    "pm2p5": ("PM2.5", "pm2p5"), "pm10": ("PM10", "pm10"),
+    "o3_surface": ("Ozone", "o3"), "no2_surface": ("NO₂", "no2"),
+    "so2_surface": ("SO₂", "so2"), "co_surface": ("CO", "co"),
+}
 
 
 def classify(name: str) -> dict[str, Any]:
@@ -107,34 +121,38 @@ def classify(name: str) -> dict[str, Any]:
         core = rest[:-len("_eea")] if is_index else rest
         species = core[:-len("_forecast_surface")] if core.endswith("_forecast_surface") else core
         return {
-            "category": "allergens", "tier": "curated",
+            "category": "allergens", "tier": "curated", "region": "europe",
             "short": POLLEN_SPECIES.get(species, species.title()),
             "species": species, "variant": "index" if is_index else "concentration",
         }
 
-    # Air quality: europe_<pollutant>_forecast_surface (analysis variants stay advanced)
+    # Air quality (Europe): europe_<pollutant>_forecast_surface (analysis variants stay advanced)
     if stem.startswith("europe_") and stem.endswith("_forecast_surface"):
         pollutant = stem[len("europe_"):-len("_forecast_surface")]
         if pollutant in AIR_QUALITY:
-            return {"category": "air-quality", "tier": "curated",
+            return {"category": "air-quality", "tier": "curated", "region": "europe",
                     "short": AIR_QUALITY[pollutant], "species": pollutant, "variant": "forecast"}
 
+    # Air quality (global): coarser composition_* surface layers, used outside Europe.
+    if stem in GLOBAL_AIR_QUALITY:
+        short, species = GLOBAL_AIR_QUALITY[stem]
+        return {"category": "air-quality", "tier": "curated", "region": "global",
+                "short": short, "species": species, "variant": "forecast"}
+
     if stem in AEROSOLS:
-        return {"category": "aerosols", "tier": "curated", "short": AEROSOLS[stem],
-                "species": stem, "variant": "forecast"}
+        return {"category": "aerosols", "tier": "curated", "region": "any",
+                "short": AEROSOLS[stem], "species": stem, "variant": "forecast"}
 
     if stem in UV:
-        return {"category": "uv", "tier": "curated", "short": UV[stem],
-                "species": stem, "variant": "forecast"}
+        return {"category": "uv", "tier": "curated", "region": "any",
+                "short": UV[stem], "species": stem, "variant": "forecast"}
 
-    if stem == "fire":
-        return {"category": "fire", "tier": "curated", "short": "Fire radiative power",
-                "species": "fire", "variant": "forecast"}
-
-    # Long tail: global gases at levels + speciated PM/chemistry + analysis grids.
+    # Long tail: global gases at levels + speciated PM/chemistry + fire + analysis
+    # grids. Reachable only through the ⚙ all-layers search ("Other").
     group = "gases" if any(g in stem for g in ("co2", "ch4", "co", "o3", "no2", "so2", "hcho")) else "surface"
-    return {"category": "advanced", "tier": "advanced", "short": stem,
-            "species": stem, "variant": group}
+    short = "Fire radiative power" if stem == "fire" else stem
+    return {"category": "advanced", "tier": "advanced", "region": "any",
+            "short": short, "species": stem, "variant": group}
 
 
 def parse_capabilities(xml_text: str) -> list[dict[str, Any]]:
@@ -241,15 +259,32 @@ def timezone_center() -> dict[str, float] | None:
     return None
 
 
+def user_region() -> str:
+    """"europe" when the timezone centre falls in the CAMS regional domain, else
+    "global". Unresolved timezone → "europe" (matches the Europe-wide fallback
+    frame). Drives which air-quality layers are curated and whether Allergens is
+    available."""
+    center = timezone_center()
+    if not center:
+        return "europe"
+    b = EUROPE_BBOX
+    inside = (b["lat_min"] <= center["lat"] <= b["lat_max"]
+              and b["lon_min"] <= center["lon"] <= b["lon_max"])
+    return "europe" if inside else "global"
+
+
 def default_state() -> dict[str, Any]:
     # Open on the user's country (from the system timezone), falling back to a
     # Europe-wide frame when the timezone can't be resolved.
     center = timezone_center() or {"lat": 49.0, "lon": 15.0}
+    region = user_region()
+    layer = DEFAULT_LAYER if region == "europe" else DEFAULT_LAYER_GLOBAL
     return {
-        "layer": DEFAULT_LAYER,
+        "layer": layer,
         "style": DEFAULT_STYLE,
         "home": dict(center),  # fixed location for the bar readout/alerts
-        "barMetric": DEFAULT_LAYER,  # which layer the bar indicator tracks
+        "barMetric": layer,  # which layer the bar indicator tracks
+        "region": region,  # "europe" | "global"; picks curated layers + Allergens
         "center": center,
         "zoom": 6,  # tighter on the timezone's city, region still visible
         "timeIndex": -1,
