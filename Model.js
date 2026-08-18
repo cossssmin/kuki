@@ -6,9 +6,8 @@ var groupLabels = {
   "air-quality": "Air quality",
   "allergens": "Allergens",
   "aerosols": "Aerosols",
-  "uv": "UV index",
-  "gases": "Gases",
-  "fire": "Fire"
+  "uv": "UV",
+  "gases": "Gases"
 }
 
 function parseCaps(raw) {
@@ -116,8 +115,7 @@ var legendEndLabels = {
   "air-quality": { low: "Cleaner", high: "More polluted" },
   "allergens": { low: "Less pollen", high: "More pollen" },
   "aerosols": { low: "Clearer", high: "Hazier" },
-  "uv": { low: "Low UV", high: "Extreme UV" },
-  "fire": { low: "Low", high: "Intense" }
+  "uv": { low: "Low UV", high: "Extreme UV" }
 }
 
 // Qualitative health levels for the bar indicator. A single traffic-light ramp
@@ -137,7 +135,7 @@ var METRIC_BANDS = {
   "pollen": [10, 30, 100, 300]
 }
 
-// Which band table applies to a layer (null = no health band, e.g. aerosols/fire).
+// Which band table applies to a layer (null = no health band, e.g. aerosols).
 function metricKind(layer) {
   if (!layer) return null
   if (layer.category === "uv") return "uv"
@@ -160,10 +158,54 @@ function legendEnds(category) {
 }
 
 // Curated-category ordering + the layer each category opens to (by `species`).
-var CATEGORY_ORDER = ["air-quality", "allergens", "aerosols", "uv", "fire"]
+var CATEGORY_ORDER = ["air-quality", "allergens", "aerosols", "uv"]
 var DEFAULT_SPECIES = {
   "air-quality": "pm2p5", "allergens": "grass",
-  "aerosols": "aod550", "uv": "uvindex", "fire": "fire"
+  "aerosols": "aod550", "uv": "uvindex"
+}
+
+// CAMS's high-res regional ensemble covers this box (Europe); outside it the
+// curated layers fall back to the coarser global model. Kept in sync with the
+// EUROPE_BBOX in cams.py. `region` is view-driven: it tracks the map centre, so
+// panning into North America (etc.) swaps the overlay to global data.
+var EUROPE_BBOX = { latMin: 30.0, latMax: 72.0, lonMin: -25.0, lonMax: 45.0 }
+
+function regionForPoint(lat, lon) {
+  var b = EUROPE_BBOX
+  var inside = lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax
+  return inside ? "europe" : "global"
+}
+
+// The same curated metric in a different region: same category/species/variant,
+// matching `region` (or region-agnostic). Used to swap e.g. the Europe PM2.5
+// layer for the global one when the map pans out of Europe. Uses raw caps.
+function regionEquivalent(caps, layer, region) {
+  if (!layer) return null
+  var layers = caps && caps.layers ? caps.layers : []
+  for (var i = 0; i < layers.length; i++) {
+    var l = layers[i]
+    if (l.tier === "curated" && l.category === layer.category
+        && l.species === layer.species
+        && (l.region === region || l.region === "any")
+        && (!layer.variant || l.variant === layer.variant))
+      return l.name
+  }
+  return null
+}
+
+// A region-scoped view of caps: drops curated layers not valid for `region`
+// ("europe"/"global"), keeping region-agnostic curated layers and the whole
+// advanced long tail. Pass this to the category/picker helpers; keep raw caps
+// for findLayer and the "Other" all-layers search.
+function withRegion(caps, region) {
+  if (!caps || !caps.layers) return caps
+  var r = region || "europe"
+  var layers = caps.layers.filter(function(l) {
+    if (l.tier !== "curated") return true
+    var lr = l.region || "any"
+    return lr === "any" || lr === r
+  })
+  return { generatedAt: caps.generatedAt, layerCount: caps.layerCount, layers: layers }
 }
 
 function curatedLayers(caps) {
@@ -175,13 +217,17 @@ function layersInCategory(caps, category) {
   return curatedLayers(caps).filter(function(l) { return l.category === category })
 }
 
-// Categories that actually have curated layers, in display order.
+// Categories that have curated layers for the scoped region, in display order.
+// Allergens is always listed but flagged `disabled` where no pollen data exists
+// (outside Europe), so the tab stays in place, muted and unclickable.
 function availableCategories(caps) {
   var out = []
   for (var i = 0; i < CATEGORY_ORDER.length; i++) {
     var key = CATEGORY_ORDER[i]
     if (layersInCategory(caps, key).length > 0)
       out.push({ key: key, label: groupLabel(key) })
+    else if (key === "allergens")
+      out.push({ key: key, label: groupLabel(key), disabled: true })
   }
   return out
 }

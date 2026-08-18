@@ -40,8 +40,34 @@ Item {
   }
   readonly property string validTime: times.length ? times[root.timeIndex] : ""
 
-  // Curated-category navigation, plus a "Custom" tab that searches any layer.
-  readonly property var categories: Model.availableCategories(root.caps).concat([{ key: "custom", label: "Custom" }])
+  // Air quality curates the high-res Europe layers inside the CAMS regional
+  // domain and the coarser global layers outside it; Allergens (Europe-only
+  // pollen) is disabled outside. The region tracks the MAP CENTRE, so panning
+  // into North America etc. swaps the overlay to global data. The map opens on
+  // the timezone location (cams.py picks a matching first-run layer).
+  readonly property string region: {
+    var c = root.state.center || root.state.home
+    return (c && isFinite(c.lat) && isFinite(c.lon)) ? Model.regionForPoint(c.lat, c.lon) : "europe"
+  }
+  readonly property var scopedCaps: Model.withRegion(root.caps, root.region)
+
+  // When the region changes (pan) or caps arrive, swap a curated layer that has
+  // no data here for its equivalent in the current region. Region-agnostic
+  // layers (aerosols/UV) and Other-tab layers are left alone. Pollen has no
+  // global twin, so falls back to the Air quality default outside Europe.
+  onRegionChanged: reconcileRegionLayer()
+  function reconcileRegionLayer() {
+    if (!root.caps || !root.caps.layers || !root.caps.layers.length) return
+    var l = root.currentLayer
+    if (!l || l.tier !== "curated" || (l.region || "any") === "any") return
+    if (l.region === root.region) return
+    var eq = Model.regionEquivalent(root.caps, l, root.region)
+    if (eq) { if (eq !== root.state.layer) setLayer(eq); return }
+    setCategory("air-quality")
+  }
+
+  // Curated-category navigation, plus an "Other" tab that searches any layer.
+  readonly property var categories: Model.availableCategories(root.scopedCaps).concat([{ key: "custom", label: "Other" }])
   readonly property string currentCategory: currentLayer ? currentLayer.category : "air-quality"
   // Custom view: entered explicitly, or whenever the layer is an advanced one
   // (which has no curated chip of its own).
@@ -56,7 +82,7 @@ Item {
   readonly property var categoryOptions: {
     if (!root.currentLayer)
       return root.state.layer ? [{ value: root.state.layer, label: "Loading…" }] : []
-    var opts = Model.categoryOptions(root.caps, root.currentCategory, root.currentVariant || "index", root.storedEnabled)
+    var opts = Model.categoryOptions(root.scopedCaps, root.currentCategory, root.currentVariant || "index", root.storedEnabled)
     for (var i = 0; i < opts.length; i++)
       if (opts[i].value === root.state.layer) return opts
     return [{ value: root.state.layer, label: root.currentLayer.short }].concat(opts)
@@ -68,10 +94,10 @@ Item {
     var m = root.state.enabledSpecies
     return (m && m[root.currentCategory]) ? m[root.currentCategory] : null
   }
-  readonly property var speciesOptions: Model.categorySpeciesOptions(root.caps, currentCategory, currentVariant || "index")
+  readonly property var speciesOptions: Model.categorySpeciesOptions(root.scopedCaps, currentCategory, currentVariant || "index")
   readonly property var enabledSpecies: (storedEnabled && storedEnabled.length)
     ? storedEnabled
-    : Model.allSpecies(root.caps, currentCategory, currentVariant || "index")
+    : Model.allSpecies(root.scopedCaps, currentCategory, currentVariant || "index")
 
   readonly property var legendEnds: Model.legendEnds(currentCategory)
   readonly property var allLayerOptions: Model.allLayerOptions(root.caps)
@@ -154,6 +180,9 @@ Item {
 
   function setCategory(category) {
     if (category === "custom") { setCustom(true); return }
+    // Ignore categories with no layers in the current region (a disabled tab,
+    // e.g. Allergens outside Europe), so nothing lands on an empty picker.
+    if (Model.layersInCategory(root.scopedCaps, category).length === 0) return
     var wasCustom = root.customMode
     setCustom(false)
     if (!wasCustom && category === root.currentCategory) return
@@ -170,10 +199,10 @@ Item {
     }
     // No valid remembered layer: the category default, unless it's hidden by the
     // checklist, in which case the first shown option.
-    var target = Model.defaultLayerName(root.caps, category)
+    var target = Model.defaultLayerName(root.scopedCaps, category)
     var dl = Model.findLayer(root.caps, target)
     if (enabled && dl && enabled.indexOf(dl.species) === -1) {
-      var opts = Model.categoryOptions(root.caps, category, "index", enabled)
+      var opts = Model.categoryOptions(root.scopedCaps, category, "index", enabled)
       if (opts.length) target = opts[0].value
     }
     setLayer(target)
@@ -189,10 +218,10 @@ Item {
     // If the current layer's species just got unchecked, jump to the first
     // still-enabled option so the view never rests on a hidden layer.
     var effective = (arr && arr.length)
-      ? arr : Model.allSpecies(root.caps, root.currentCategory, root.currentVariant || "index")
+      ? arr : Model.allSpecies(root.scopedCaps, root.currentCategory, root.currentVariant || "index")
     var species = root.currentLayer ? root.currentLayer.species : null
     if (species && effective.indexOf(species) === -1) {
-      var opts = Model.categoryOptions(root.caps, root.currentCategory, root.currentVariant || "index", effective)
+      var opts = Model.categoryOptions(root.scopedCaps, root.currentCategory, root.currentVariant || "index", effective)
       if (opts.length) setLayer(opts[0].value)
     }
   }
@@ -213,12 +242,17 @@ Item {
     var idx = 0
     for (var i = 0; i < cats.length; i++)
       if (cats[i].key === root.currentView) { idx = i; break }
-    var next = ((idx + delta) % cats.length + cats.length) % cats.length
-    setCategory(cats[next].key)
+    // Skip disabled tabs (e.g. Allergens outside Europe) so stepping never
+    // stalls on an unreachable category.
+    var step = delta >= 0 ? 1 : -1
+    for (var n = 0; n < cats.length; n++) {
+      idx = ((idx + step) % cats.length + cats.length) % cats.length
+      if (!cats[idx].disabled) { setCategory(cats[idx].key); return }
+    }
   }
 
   function setVariant(variant) {
-    var sibling = Model.allergenSibling(root.caps, root.currentLayer, variant)
+    var sibling = Model.allergenSibling(root.scopedCaps, root.currentLayer, variant)
     if (sibling) setLayer(sibling.name)
   }
 
@@ -377,7 +411,7 @@ Item {
     path: root.capsPath
     watchChanges: true
     printErrors: false
-    onLoaded: root.caps = Model.parseCaps(text())
+    onLoaded: { root.caps = Model.parseCaps(text()); Qt.callLater(root.reconcileRegionLayer) }
     onFileChanged: reload()
   }
 
@@ -386,7 +420,7 @@ Item {
     path: root.statePath
     watchChanges: true
     printErrors: false
-    onLoaded: root.state = Object.assign({}, root.state, Model.parseState(text()))
+    onLoaded: { root.state = Object.assign({}, root.state, Model.parseState(text())); Qt.callLater(root.reconcileRegionLayer) }
     onFileChanged: reload()
   }
 

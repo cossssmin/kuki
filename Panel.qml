@@ -191,6 +191,9 @@ Panel {
             Button {
               required property var modelData
               text: modelData.label
+              // Allergens has no data outside Europe: muted and unclickable.
+              enabled: !(modelData.disabled === true)
+              opacity: (modelData.disabled === true) ? 0.4 : 1.0
               selected: root.svc && root.svc.currentView === modelData.key
               focusable: true
               bordered: true
