@@ -33,6 +33,10 @@ Panel {
   function close() { root.controller.hide() }
   function toggle() { root.opened ? root.close() : root.open() }
 
+  // Every time the panel opens, snap the forecast back to the step nearest now,
+  // so reopening later doesn't leave you on a stale hour.
+  onOpenedChanged: if (root.opened && root.svc) root.svc.snapTimeToNow()
+
   // Play cadence is paced by the map's actual frame loads, so a slow network
   // never outruns the overlay. Each advance arms a safety timeout; a ready frame
   // arms a short dwell before the next step.
