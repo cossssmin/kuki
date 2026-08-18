@@ -1,7 +1,7 @@
 {
   "name": "kuki",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Kūki — air quality, pollen, and aerosol forecast maps from Copernicus CAMS.",
+  "description": "Kūki — worldwide air quality, pollen, aerosol, and UV forecast maps from Copernicus CAMS.",
   "license": "MIT"
 }

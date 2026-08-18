@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "kuki",
   "name": "Kūki",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "cossssmin",
   "license": "MIT",
-  "description": "Kūki — air quality, pollen, and aerosol forecast maps from Copernicus CAMS.",
+  "description": "Kūki — worldwide air quality, pollen, aerosol, and UV forecast maps from Copernicus CAMS.",
   "kinds": [
     "service",
     "bar-widget"
@@ -17,7 +17,7 @@
   },
   "barWidget": {
     "displayName": "Kūki",
-    "description": "CAMS air quality, pollen, aerosol, UV, and fire forecast maps",
+    "description": "Worldwide CAMS air quality, pollen, aerosol, and UV forecast maps",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right"
