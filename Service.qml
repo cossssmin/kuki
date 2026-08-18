@@ -265,6 +265,17 @@ Item {
     persist()
   }
 
+  // Reset the scrubber to "auto" (-1), so timeIndex recomputes to the step
+  // nearest the current clock. Called each time the panel opens, so reopening
+  // hours later lands on the current forecast instead of the last-viewed step.
+  function snapTimeToNow() {
+    if (Number(root.state.timeIndex) < 0) return
+    var next = Object.assign({}, root.state)
+    next.timeIndex = -1
+    root.state = next
+    persist()
+  }
+
   function stepTime(delta) {
     setTimeIndex(root.timeIndex + delta)
   }
