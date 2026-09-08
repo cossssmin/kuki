@@ -68,7 +68,7 @@ EUROPE_BBOX = {"lat_min": 30.0, "lat_max": 72.0, "lon_min": -25.0, "lon_max": 45
 
 # OSM tile usage policy: identify the app, cache, and keep it to 2 connections.
 TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-TILE_USER_AGENT = "Kuki/0.2.0 (Omarchy plugin; +https://github.com/cossssmin/kuki)"
+TILE_USER_AGENT = "Kuki/0.3.0 (Omarchy plugin; +https://github.com/cossssmin/kuki)"
 TILE_MAX_AGE = 7 * 24 * 60 * 60  # seconds; re-download a cached tile after this
 TILE_MAX_BYTES = 512 * 1024
 TILE_MAX_ZOOM = 19

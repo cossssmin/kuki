@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "kuki",
   "name": "Kūki",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "cossssmin",
   "license": "MIT",
   "description": "Kūki — worldwide air quality, pollen, aerosol, and UV forecast maps from Copernicus CAMS.",
