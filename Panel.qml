@@ -120,6 +120,7 @@ Panel {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: "󰖝"
+            textFormat: Text.PlainText
             color: Color.accent
             font.family: root.contentFontFamily
             font.pixelSize: Style.space(30)
@@ -166,6 +167,7 @@ Panel {
 
             Text {
               text: "Kūki"
+              textFormat: Text.PlainText
               color: root.contentForeground
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.title
@@ -175,6 +177,7 @@ Panel {
             Text {
               width: parent.width
               elide: Text.ElideRight
+              textFormat: Text.PlainText
               text: root.currentLayer ? Model.cleanTitle(root.currentLayer.title)
                 : (root.layerCount > 0 ? (root.layerCount + " CAMS layers") : "Loading…")
               color: Util.alpha(root.contentForeground, 0.64)
@@ -281,6 +284,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(64)
               text: "Opacity"
+              textFormat: Text.PlainText
               color: Util.alpha(root.contentForeground, 0.8)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -311,6 +315,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(64)
               text: "Style"
+              textFormat: Text.PlainText
               color: Util.alpha(root.contentForeground, 0.8)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -344,6 +349,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(64)
               text: "Layers"
+              textFormat: Text.PlainText
               color: Util.alpha(root.contentForeground, 0.8)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -396,6 +402,7 @@ Panel {
               id: map
               anchors.fill: parent
               dark: root.dark
+              tileService: root.svc
               lat: root.center.lat
               lon: root.center.lon
               zoom: root.svc && root.svc.state.zoom ? root.svc.state.zoom : 3
@@ -429,6 +436,7 @@ Panel {
           Text {
             anchors.verticalCenter: parent.verticalCenter
             text: root.svc ? root.svc.legendEnds.low : "Low"
+            textFormat: Text.PlainText
             color: Util.alpha(root.contentForeground, 0.64)
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
@@ -456,6 +464,7 @@ Panel {
           Text {
             anchors.verticalCenter: parent.verticalCenter
             text: root.svc ? root.svc.legendEnds.high : "High"
+            textFormat: Text.PlainText
             color: Util.alpha(root.contentForeground, 0.64)
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
@@ -479,6 +488,7 @@ Panel {
               width: parent.width
               elide: Text.ElideRight
               text: root.validTime ? Model.formatTime(root.validTime) : "—"
+              textFormat: Text.PlainText
               color: root.contentForeground
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.body
@@ -488,6 +498,7 @@ Panel {
             Text {
               width: parent.width
               text: root.steps > 0 ? ("step " + (root.timeIndex + 1) + " / " + root.steps) : "no steps"
+              textFormat: Text.PlainText
               color: Util.alpha(root.contentForeground, 0.64)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -539,6 +550,7 @@ Panel {
           visible: root.svc && root.svc.lastError !== ""
           width: parent.width
           text: root.svc ? root.svc.lastError : ""
+          textFormat: Text.PlainText
           color: Color.urgent
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.caption

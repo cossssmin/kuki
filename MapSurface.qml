@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import qs.Commons
 import "Model.js" as Model
 
@@ -26,6 +27,21 @@ Item {
   signal overlayFrameReady()
 
   readonly property var tiles: Model.tilesForViewport(lat, lon, zoom, width, height)
+
+  // Base tiles come from the service's tile fetcher (see Service.qml): QML's
+  // Image can't set a User-Agent and OSM rejects the generic Qt one, so the
+  // helper fetches, caches, and returns validated bytes as data: URLs.
+  property var tileService: null
+
+  function requestTiles() {
+    if (!tileService) return
+    var keys = []
+    for (var i = 0; i < tiles.length; i++) keys.push(Model.tileKey(tiles[i]))
+    tileService.requestTiles(keys)
+  }
+
+  onTilesChanged: requestTiles()
+  onTileServiceChanged: requestTiles()
 
   // The overlay is double-buffered: a new frame loads into the idle buffer while
   // the current one stays on screen, so stepping/playing never flashes blank.
@@ -91,19 +107,35 @@ Item {
     color: root.dark ? "#1a1a1a" : "#e8e8e8"
   }
 
-  // Base tiles.
-  Repeater {
-    model: root.tiles
-    delegate: Image {
-      required property var modelData
-      x: modelData.screenX
-      y: modelData.screenY
-      width: 256
-      height: 256
-      asynchronous: true
-      cache: true
-      fillMode: Image.Stretch
-      source: Model.baseTileUrl(modelData, root.dark)
+  // Base tiles, toned down (desaturated, dimmed in dark mode) so the overlay
+  // stays legible on top. MultiEffect ships with Qt, so no shader binary.
+  Item {
+    anchors.fill: parent
+    layer.enabled: true
+    layer.effect: MultiEffect {
+      saturation: -0.8
+      brightness: root.dark ? -0.55 : 0.05
+      contrast: root.dark ? 0.15 : -0.1
+    }
+
+    Repeater {
+      model: root.tiles
+      delegate: Image {
+        required property var modelData
+        x: modelData.screenX
+        y: modelData.screenY
+        width: 256
+        height: 256
+        asynchronous: true
+        cache: true
+        fillMode: Image.Stretch
+        sourceSize: Qt.size(256, 256)
+        source: {
+          if (!root.tileService) return ""
+          root.tileService.tileVersion
+          return root.tileService.tileSource(Model.tileKey(modelData))
+        }
+      }
     }
   }
 
@@ -157,6 +189,7 @@ Item {
       Text {
         anchors.verticalCenter: parent.verticalCenter
         text: "󰑐"
+        textFormat: Text.PlainText
         color: root.dark ? "#eeeeee" : "#333333"
         font.pixelSize: Style.font.caption
         RotationAnimator on rotation {
@@ -169,6 +202,7 @@ Item {
       Text {
         anchors.verticalCenter: parent.verticalCenter
         text: "Updating…"
+        textFormat: Text.PlainText
         color: root.dark ? "#eeeeee" : "#333333"
         font.pixelSize: Style.font.caption
       }
@@ -218,12 +252,13 @@ Item {
     }
   }
 
-  // Attribution — Carto/OSM require it; keep it small and out of the way.
+  // Attribution — OSM requires it; keep it small and out of the way.
   Text {
     anchors.right: parent.right
     anchors.bottom: parent.bottom
     anchors.margins: Style.space(3)
-    text: "© OpenStreetMap, CARTO · CAMS"
+    text: "© OpenStreetMap contributors · CAMS"
+    textFormat: Text.PlainText
     color: root.dark ? "#cccccc" : "#333333"
     opacity: 0.7
     font.pixelSize: Style.font.caption

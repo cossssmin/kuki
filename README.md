@@ -66,11 +66,14 @@ Or just disable it, keeping it installed:
 omarchy plugin disable kuki
 ```
 
-To also clear its saved state and cache:
+Removal keeps two things, both harmless and yours to delete:
 
-```sh
-rm -rf ~/.config/omarchy/kuki
-```
+- `~/.config/omarchy/kuki/` — `state.json` (map view, home coordinates, layer
+  choices) and `caps.json` (the cached CAMS layer list).
+- `~/.cache/kuki/tiles/` — cached OpenStreetMap basemap tiles.
+
+Nothing else is installed: no services, timers, packages, hooks, or changes to
+any other configuration file.
 
 ## Usage
 
@@ -104,19 +107,25 @@ No QtLocation is required; the map is hand-rolled.
 - **No third-party packages.** Nothing to `npm` or `pip` install. The QML runs on
   the Omarchy/Quickshell runtime; the Python helper uses only the standard library.
 - **External services** (network): the CAMS WMS at `eccharts.ecmwf.int` and the
-  CARTO basemap tiles at `basemaps.cartocdn.com`.
+  OpenStreetMap basemap tiles at `tile.openstreetmap.org` (light/dark theming
+  is applied on the GPU with a precompiled shader in `shaders/`, so both themes
+  use the same tiles).
 
 ## Configuration
 
 Kūki reads and writes only its own files under `~/.config/omarchy/kuki/`
-(`state.json`, `caps.json`). It never modifies your Hyprland, shell, or any other
+(`state.json`, `caps.json`, written atomically at mode 0600 by the helper) and
+caches basemap tiles under `~/.cache/kuki/` (re-fetched after 7 days). The
+state file holds the map centre and your home coordinates (derived from the
+system timezone, not IP geolocation). It never modifies your Hyprland, shell, or any other
 configuration. Bar placement is handled by the `omarchy` CLI when you enable it.
 
 ## Data & attribution
 
 - Forecast data: **Copernicus Atmosphere Monitoring Service (CAMS)** via the
   public ECMWF WMS (`eccharts.ecmwf.int/wms?token=public`).
-- Basemap: **© OpenStreetMap contributors, © CARTO**.
+- Basemap: **© OpenStreetMap contributors**, served under the
+  [OSMF tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
 
 ## License
 
