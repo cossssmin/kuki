@@ -56,6 +56,7 @@ BarWidget {
     // wind glyph looking off. Keep the text for sizing but hide it, and draw an
     // OpticalGlyph on top that centres the actual ink.
     foreground: "transparent"
+    // barSummary is already markup-stripped and capped by the service.
     tooltipText: root.kukiService ? root.kukiService.barSummary : "Kūki"
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.LeftButton) root.toggle()

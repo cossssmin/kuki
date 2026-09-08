@@ -10,22 +10,124 @@ var groupLabels = {
   "gases": "Gases"
 }
 
+// Everything below the shell reads (caps.json, state.json, helper output) is
+// treated as input: known keys only, closed grammars for identifiers, markup
+// and control characters stripped from free text, counts and ranges capped.
+// cams.py applies the same rules when it writes; this is the consumer side.
+var NAME_RE = /^[A-Za-z0-9_.-]{1,120}$/
+var TIME_RE = /^[0-9TZ:,\/PDHM.-]*$/
+var MAX_LAYERS = 500
+var MAX_STYLES = 32
+var MAX_TIME_STEPS = 4000
+
+function plain(value, limit) {
+  var s = typeof value === "string" ? value : ""
+  s = s.replace(/[\x00-\x1f\x7f-\x9f‎‏‪-‮⁦-⁩<>&]/g, "")
+  return s.substring(0, limit || 200)
+}
+
+function nameOr(value, fallback) {
+  return (typeof value === "string" && NAME_RE.test(value)) ? value : fallback
+}
+
+function oneOf(value, allowed, fallback) {
+  return allowed.indexOf(value) !== -1 ? value : fallback
+}
+
+function finiteIn(value, min, max) {
+  var n = Number(value)
+  return (typeof value === "number" && isFinite(n) && n >= min && n <= max) ? n : null
+}
+
 function parseCaps(raw) {
   var parsed = {}
   try { parsed = JSON.parse(String(raw || "{}")) }
   catch (error) { parsed = {} }
-  return {
-    generatedAt: Number(parsed.generatedAt) || 0,
-    layerCount: Number(parsed.layerCount) || 0,
-    layers: Array.isArray(parsed.layers) ? parsed.layers : []
+  var layers = []
+  var input = Array.isArray(parsed.layers) ? parsed.layers : []
+  for (var i = 0; i < input.length && layers.length < MAX_LAYERS; i++) {
+    var l = input[i]
+    if (!l || typeof l !== "object") continue
+    var name = nameOr(l.name, null)
+    if (!name) continue
+    var styles = []
+    var rawStyles = Array.isArray(l.styles) ? l.styles : []
+    for (var s = 0; s < rawStyles.length && styles.length < MAX_STYLES; s++) {
+      var st = nameOr(rawStyles[s], null)
+      if (st) styles.push(st)
+    }
+    var time = (typeof l.time === "string" && l.time.length <= 16384 && TIME_RE.test(l.time)) ? l.time : null
+    layers.push({
+      name: name,
+      title: plain(l.title, 200) || name,
+      short: plain(l.short, 60) || name,
+      default: (typeof l.default === "string" && TIME_RE.test(l.default)) ? l.default : null,
+      time: time,
+      styles: styles,
+      category: oneOf(l.category, ["air-quality", "allergens", "aerosols", "uv", "advanced"], "advanced"),
+      tier: oneOf(l.tier, ["curated", "advanced"], "advanced"),
+      region: oneOf(l.region, ["europe", "global", "any"], "any"),
+      species: nameOr(l.species, name),
+      variant: nameOr(l.variant, "forecast")
+    })
   }
+  return {
+    generatedAt: finiteIn(parsed.generatedAt, 0, 1e12) || 0,
+    layerCount: layers.length,
+    layers: layers
+  }
+}
+
+function parsePoint(value) {
+  if (!value || typeof value !== "object") return null
+  var lat = finiteIn(value.lat, -90, 90)
+  var lon = finiteIn(value.lon, -180, 180)
+  return (lat !== null && lon !== null) ? { lat: lat, lon: lon } : null
 }
 
 function parseState(raw) {
   var parsed = {}
   try { parsed = JSON.parse(String(raw || "{}")) }
   catch (error) { parsed = {} }
-  return parsed
+  if (!parsed || typeof parsed !== "object") return {}
+  var out = {}
+  var layer = nameOr(parsed.layer, null)
+  if (layer) out.layer = layer
+  if (parsed.style === "" || nameOr(parsed.style, null)) out.style = parsed.style
+  var bar = nameOr(parsed.barMetric, null)
+  if (bar) out.barMetric = bar
+  var home = parsePoint(parsed.home)
+  if (home) out.home = home
+  var center = parsePoint(parsed.center)
+  if (center) out.center = center
+  if (parsed.region === "europe" || parsed.region === "global") out.region = parsed.region
+  var zoom = finiteIn(parsed.zoom, 2, 9)
+  if (zoom !== null) out.zoom = Math.round(zoom)
+  var idx = finiteIn(parsed.timeIndex, -1, 10000)
+  if (idx !== null) out.timeIndex = Math.round(idx)
+  var opacity = finiteIn(parsed.overlayOpacity, 0, 1)
+  if (opacity !== null) out.overlayOpacity = opacity
+  if (typeof parsed.custom === "boolean") out.custom = parsed.custom
+  var species = {}
+  if (parsed.enabledSpecies && typeof parsed.enabledSpecies === "object") {
+    var keys = Object.keys(parsed.enabledSpecies).slice(0, 16)
+    for (var k = 0; k < keys.length; k++) {
+      var list = parsed.enabledSpecies[keys[k]]
+      if (!NAME_RE.test(keys[k]) || !Array.isArray(list)) continue
+      species[keys[k]] = list.filter(function(v) { return nameOr(v, null) !== null }).slice(0, 64)
+    }
+  }
+  out.enabledSpecies = species
+  var last = {}
+  if (parsed.lastLayer && typeof parsed.lastLayer === "object") {
+    var lkeys = Object.keys(parsed.lastLayer).slice(0, 16)
+    for (var j = 0; j < lkeys.length; j++) {
+      var v = nameOr(parsed.lastLayer[lkeys[j]], null)
+      if (NAME_RE.test(lkeys[j]) && v) last[lkeys[j]] = v
+    }
+  }
+  out.lastLayer = last
+  return out
 }
 
 function findLayer(caps, name) {
@@ -67,9 +169,10 @@ function expandTimes(dimension) {
     var end = Date.parse(parts[1])
     var step = durationMs(parts[2])
     if (!isFinite(start) || !isFinite(end) || step <= 0) { out.push(parts[0]); continue }
-    for (var ms = start; ms <= end; ms += step) {
+    for (var ms = start; ms <= end && out.length < MAX_TIME_STEPS; ms += step) {
       out.push(new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z"))
     }
+    if (out.length >= MAX_TIME_STEPS) break
   }
   return out
 }
@@ -452,10 +555,9 @@ function wmsOverlayUrl(layer, style, bbox, width, height, dimTime) {
   return WMS_BASE + "&" + params.join("&")
 }
 
-// Carto raster basemap, theme-aware. Public tiles; a/b/c/d subdomains.
-function baseTileUrl(tile, dark) {
-  var style = dark ? "dark_all" : "light_all"
-  var sub = "abcd".charAt((tile.x + tile.y) % 4)
-  return "https://" + sub + ".basemaps.cartocdn.com/" + style
-    + "/" + tile.z + "/" + tile.x + "/" + tile.y + ".png"
+// Key a base tile is requested from / cached by the helper under (`cams.py
+// tiles`). Light/dark theming is done on the GPU in MapSurface, so the same
+// tile serves both.
+function tileKey(tile) {
+  return tile.z + "/" + tile.x + "/" + tile.y
 }

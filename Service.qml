@@ -28,6 +28,30 @@ Item {
     var url = String(Qt.resolvedUrl("cams.py"))
     return decodeURIComponent(url.indexOf("file://") === 0 ? url.substring(7) : url)
   }
+  // System interpreter by absolute path, isolated from PYTHON* env and user
+  // site-packages; the helper is stdlib-only. Every command is this + args.
+  readonly property var python: ["/usr/bin/python3", "-I", "-S", root.helperPath]
+
+  // Helper stdout is collected in bounded chunks rather than whole (the helper
+  // prints small JSON documents; anything past the cap is discarded, not
+  // truncated into shape). Parsed only once the process has exited.
+  component BoundedOutput: SplitParser {
+    property string buffer: ""
+    property bool overflowed: false
+    property int maxBytes: 262144
+    splitMarker: ""
+    onRead: function(chunk) {
+      if (overflowed) return
+      buffer += chunk
+      if (buffer.length > maxBytes) { buffer = ""; overflowed = true }
+    }
+    function take() {
+      var out = overflowed ? "" : buffer
+      buffer = ""
+      overflowed = false
+      return out
+    }
+  }
 
   // Currently selected layer's metadata and expanded forecast time steps.
   readonly property var currentLayer: Model.findLayer(root.caps, root.state.layer)
@@ -113,7 +137,7 @@ Item {
     if (helperProcess.running) return false
     root.refreshing = true
     root.lastError = ""
-    helperProcess.command = ["python3", root.helperPath].concat(args)
+    helperProcess.command = root.python.concat(args)
     helperProcess.running = true
     return true
   }
@@ -130,23 +154,21 @@ Item {
   function refreshLegend() {
     if (!root.state.layer) { root.swatches = []; return }
     if (legendProcess.running) { root.legendPending = true; return }
-    legendProcess.command = ["python3", root.helperPath, "legend",
-      "--layer", root.state.layer, "--style", root.state.style || ""]
+    legendProcess.command = root.python.concat(["legend",
+      "--layer", root.state.layer, "--style", root.state.style || ""])
     legendProcess.running = true
   }
 
   Process {
     id: legendProcess
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = {}
-        try { parsed = JSON.parse(text || "{}") } catch (e) { parsed = {} }
-        if (parsed.layer === root.state.layer)
-          root.swatches = Array.isArray(parsed.colors) ? parsed.colors : []
-      }
-    }
+    stdout: BoundedOutput { id: legendOut }
     onExited: {
+      var parsed = {}
+      try { parsed = JSON.parse(legendOut.take() || "{}") } catch (e) { parsed = {} }
+      if (parsed && parsed.layer === root.state.layer) {
+        var colors = Array.isArray(parsed.colors) ? parsed.colors : []
+        root.swatches = colors.filter(function(c) { return /^#[0-9a-f]{6}$/.test(c) }).slice(0, 64)
+      }
       if (root.legendPending) { root.legendPending = false; root.refreshLegend() }
     }
   }
@@ -315,8 +337,36 @@ Item {
     persist()
   }
 
-  function persist() {
-    stateFile.setText(JSON.stringify(root.state))
+  // State is written by the helper (exclusive temp, 0600, rename), fed over
+  // stdin, never through a pathname the shell opens itself. Writes are
+  // debounced: sliders and pans persist many times a second.
+  function persist() { persistDebounce.restart() }
+
+  property bool persistPending: false
+
+  function flushState() {
+    if (stateProcess.running) { root.persistPending = true; return }
+    stateProcess.stdinEnabled = true
+    stateProcess.command = root.python.concat(["state-write"])
+    stateProcess.running = true
+  }
+
+  Timer {
+    id: persistDebounce
+    interval: 300
+    onTriggered: root.flushState()
+  }
+
+  Process {
+    id: stateProcess
+    onStarted: {
+      stateProcess.write(JSON.stringify(root.state) + "\n")
+      stateProcess.stdinEnabled = false
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.lastError = "Could not save settings"
+      if (root.persistPending) { root.persistPending = false; root.flushState() }
+    }
   }
 
   // --- Bar readout: periodic value probe at the home location ---------------
@@ -326,34 +376,34 @@ Item {
   readonly property var barTimes: barLayer ? Model.expandTimes(barLayer.time) : []
   readonly property string barTime: barTimes.length ? barTimes[Model.nearestTimeIndex(barTimes, Date.now())] : ""
   readonly property var barLevel: Model.levelFor(Model.metricKind(barLayer), barValue)
+  // Rendered by the host's tooltip (AutoText, cannot be pinned), so it is
+  // stripped of markup here even though every part is already sanitized.
   readonly property string barSummary: {
     if (!barLayer) return "Kūki"
-    if (!isFinite(barValue)) return barLayer.short + " · …"
+    if (!isFinite(barValue)) return Model.plain(barLayer.short + " · …", 80)
     var v = barValue < 10 ? barValue.toFixed(1) : Math.round(barValue)
-    return barLayer.short + " " + v + (barUnit ? " " + barUnit : "")
-      + (barLevel ? " · " + barLevel.name : "")
+    return Model.plain(barLayer.short + " " + v + (barUnit ? " " + barUnit : "")
+      + (barLevel ? " · " + barLevel.name : ""), 80)
   }
 
   function refreshBar() {
     if (barProcess.running || !barLayer || !root.state.home || !root.barTime) return
-    barProcess.command = ["python3", root.helperPath, "probe",
+    barProcess.command = root.python.concat(["probe",
       "--layer", root.state.barMetric, "--style", "",
       "--lat", String(root.state.home.lat), "--lon", String(root.state.home.lon),
-      "--time", root.barTime]
+      "--time", root.barTime])
     barProcess.running = true
   }
 
   Process {
     id: barProcess
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = {}
-        try { parsed = JSON.parse(text || "{}") } catch (e) { parsed = {} }
-        if (parsed.value !== null && isFinite(parsed.value)) {
-          root.barValue = Number(parsed.value)
-          root.barUnit = parsed.unit || ""
-        }
+    stdout: BoundedOutput { id: barOut }
+    onExited: {
+      var parsed = {}
+      try { parsed = JSON.parse(barOut.take() || "{}") } catch (e) { parsed = {} }
+      if (parsed && typeof parsed.value === "number" && isFinite(parsed.value)) {
+        root.barValue = parsed.value
+        root.barUnit = Model.plain(parsed.unit, 16)
       }
     }
   }
@@ -370,29 +420,25 @@ Item {
 
   Component.onCompleted: { Qt.callLater(refreshLegend); Qt.callLater(refreshBar) }
 
+  // init's stdout (the merged state) is not consumed: the files it wrote are
+  // reloaded instead, so no collector is attached and the output is dropped.
   Process {
     id: initProcess
-    command: ["python3", root.helperPath, "init"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        capsFile.reload()
-        stateFile.reload()
-      }
-    }
+    command: root.python.concat(["init"])
     Component.onCompleted: running = true
     onExited: function(exitCode) {
       if (exitCode !== 0) root.lastError = "Could not initialize Kūki"
+      root.readCaps()
+      root.readState()
     }
   }
 
   Process {
     id: helperProcess
-    stdout: StdioCollector { waitForEnd: true }
     onExited: function(exitCode) {
       root.refreshing = false
       if (exitCode !== 0) root.lastError = "Could not refresh capabilities"
-      capsFile.reload()
+      root.readCaps()
     }
   }
 
@@ -406,33 +452,140 @@ Item {
     running: true
     onTriggered: {
       if (autoRefreshProcess.running) return
-      autoRefreshProcess.command = ["python3", root.helperPath, "capabilities"]
+      autoRefreshProcess.command = root.python.concat(["capabilities"])
       autoRefreshProcess.running = true
     }
   }
 
   Process {
     id: autoRefreshProcess
-    stdout: StdioCollector { waitForEnd: true }
-    onExited: capsFile.reload()
+    onExited: root.readCaps()
   }
 
+  // The shell never opens caps.json/state.json itself: FileView is only a
+  // change watcher (preload off, text() never called). Content comes back
+  // through `cams.py read`, which validates the descriptor and bounds the
+  // size, and is validated again by Model.parseCaps/parseState.
   FileView {
-    id: capsFile
+    id: capsWatch
     path: root.capsPath
+    preload: false
     watchChanges: true
     printErrors: false
-    onLoaded: { root.caps = Model.parseCaps(text()); Qt.callLater(root.reconcileRegionLayer) }
-    onFileChanged: reload()
+    onFileChanged: root.readCaps()
   }
 
   FileView {
-    id: stateFile
+    id: stateWatch
     path: root.statePath
+    preload: false
     watchChanges: true
     printErrors: false
-    onLoaded: { root.state = Object.assign({}, root.state, Model.parseState(text())); Qt.callLater(root.reconcileRegionLayer) }
-    onFileChanged: reload()
+    onFileChanged: root.readState()
+  }
+
+  property bool capsReadPending: false
+  property bool stateReadPending: false
+
+  function readCaps() {
+    if (capsRead.running) { root.capsReadPending = true; return }
+    capsRead.command = root.python.concat(["read", "caps"])
+    capsRead.running = true
+  }
+
+  function readState() {
+    if (stateRead.running) { root.stateReadPending = true; return }
+    stateRead.command = root.python.concat(["read", "state"])
+    stateRead.running = true
+  }
+
+  Process {
+    id: capsRead
+    stdout: BoundedOutput { id: capsOut; maxBytes: 1048576 }
+    onExited: function(exitCode) {
+      var text = capsOut.take()
+      if (exitCode === 0 && text) {
+        root.caps = Model.parseCaps(text)
+        Qt.callLater(root.reconcileRegionLayer)
+      }
+      if (root.capsReadPending) { root.capsReadPending = false; root.readCaps() }
+    }
+  }
+
+  Process {
+    id: stateRead
+    stdout: BoundedOutput { id: stateOut }
+    onExited: function(exitCode) {
+      var text = stateOut.take()
+      if (exitCode === 0 && text) {
+        root.state = Object.assign({}, root.state, Model.parseState(text))
+        Qt.callLater(root.reconcileRegionLayer)
+      }
+      if (root.stateReadPending) { root.stateReadPending = false; root.readState() }
+    }
+  }
+
+  // --- Basemap tiles ---------------------------------------------------------
+  // One tile fetcher per shell (this service is a singleton; each bar has its
+  // own MapSurface). The helper fetches OSM tiles with a proper User-Agent,
+  // caches them, and hands the validated PNG bytes back as a data: URL, so the
+  // shell never opens a tile path. Results are kept in a small FIFO.
+  property var tileData: Object.create(null)
+  property var tileOrder: []
+  property var tileRequested: Object.create(null)
+  property var tileFailed: Object.create(null)
+  property int tileVersion: 0
+  readonly property int maxTiles: 160
+  readonly property int tileRetryAfterMs: 60000
+  readonly property int tileLineMax: 800000  // 512 KiB PNG as base64 + key
+
+  function requestTiles(keys) {
+    if (!tileProcess.running) return
+    var now = Date.now()
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i]
+      if (!/^\d{1,2}\/\d{1,7}\/\d{1,7}$/.test(key)) continue
+      if (tileData[key] || tileRequested[key]) continue
+      // OSM's policy is strict about hammering: a failed tile waits a minute.
+      if (tileFailed[key] && now - tileFailed[key] < tileRetryAfterMs) continue
+      tileRequested[key] = true
+      tileProcess.write(key + "\n")
+    }
+  }
+
+  function tileSource(key) {
+    return tileData[key] || ""
+  }
+
+  function storeTile(key, url) {
+    if (!tileData[key]) {
+      tileOrder.push(key)
+      while (tileOrder.length > maxTiles) delete tileData[tileOrder.shift()]
+    }
+    tileData[key] = url
+    tileVersion++
+  }
+
+  Component.onDestruction: tileProcess.signal(15)
+
+  Process {
+    id: tileProcess
+    command: root.python.concat(["tiles"])
+    running: true
+    stdinEnabled: true
+    stdout: SplitParser {
+      onRead: function(line) {
+        // "<z/x/y> data:image/png;base64,<...>" or "<z/x/y> !"; anything else dropped.
+        if (line.length > root.tileLineMax) return
+        var match = /^(\d{1,2}\/\d{1,7}\/\d{1,7}) (data:image\/png;base64,[A-Za-z0-9+\/=]+|!)$/.exec(line)
+        if (!match) return
+        var key = match[1]
+        delete root.tileRequested[key]
+        if (match[2] === "!") { root.tileFailed[key] = Date.now(); return }
+        delete root.tileFailed[key]
+        root.storeTile(key, match[2])
+      }
+    }
   }
 
   IpcHandler {
