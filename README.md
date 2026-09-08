@@ -4,7 +4,10 @@ Air quality, pollen, aerosol, and UV forecast maps on the Omarchy Quattro bar, f
 
 *Kūki* (空気) is Japanese for "air."
 
-![Kūki forecast map panel](preview.png)
+<p>
+  <img src="docs/light.png" width="49%" alt="Kūki forecast map panel, light theme">
+  <img src="docs/dark.png" width="49%" alt="Kūki forecast map panel, dark theme">
+</p>
 
 Click the wind icon in the bar to open an interactive slippy map of Copernicus
 Atmosphere Monitoring Service (CAMS) forecast layers. Pan and zoom, step through
